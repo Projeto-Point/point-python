@@ -16,9 +16,9 @@ usernameSqlServer = 'adm-point'
 passwordSqlServer = '1cco#grupo1'
 
 # Credenciais do MySQL
-databaseMySql = 'bd_point' 
-usernameMySql = 'aluno' 
-passwordMySql = 'sptech'
+databaseMySql = 'bd_point'
+usernameMySql = 'root'
+passwordMySql = 'urubu100'
 
 def limpar():
     if os.name == 'posix':
