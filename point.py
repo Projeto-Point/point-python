@@ -73,6 +73,7 @@ def bytes_para_giga(value):
 
 verificaLogin = False
 verificarCadastro = False
+idFuncionario = 0
 
 while verificaLogin == False:
     limpar()
@@ -80,15 +81,12 @@ while verificaLogin == False:
     login = input('Bem vindo ao Point! \nDigite o login do funcionário: ')
     senha = input('Digite a senha do funcionário: ')
     
-    consulta = consultarBanco(f"SELECT fkFuncionario FROM Funcionario WHERE email = '{login}' and senha = '{senha}'")
+    consulta = consultarBanco(f"SELECT idFuncionario FROM Funcionario WHERE email = '{login}' and senha = '{senha}'")
     if(len(consulta) > 0):
+        idFuncionario = consulta[0][0]
         verificaLogin = True
 
 nome = platform.node()
-
-# Pegando id do funcionário
-consulta = consultarBanco(f"SELECT idFuncionario FROM Funcionario WHERE email = '{login}' and senha = '{senha}'")
-idFuncionario = consulta[0][0]
 
 # Verificando se a máquina existe
 consulta = consultarBanco(f"SELECT nomeMaquina FROM Maquina WHERE nomeMaquina = '{nome}' AND fkFuncionario = {idFuncionario}")
