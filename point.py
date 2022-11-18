@@ -87,13 +87,11 @@ while verificaLogin == False:
         verificaLogin = True
 
 nome = platform.node()
-idMaquina = 0
 
 # Verificando se a máquina existe
 consulta = consultarBanco(f"SELECT nomeMaquina FROM Maquina WHERE nomeMaquina = '{nome}' AND fkFuncionario = {idFuncionario}")
 
 if len(consulta) == 1:
-    idMaquina = consulta[0][0]
     print("Esta máquina já está cadastrada")
 else:
     print("Cadastrando máquina...")
@@ -116,6 +114,9 @@ else:
     inserirBanco(f"INSERT INTO Atributo (atributo, valor, unidadeMedida, fkMaquina, fkComponente) VALUES ('THREADS', {cpu_count(logical=True)}, 'unidade', {idMaquina}, 1)")
     inserirBanco(f"INSERT INTO Atributo (atributo, valor, unidadeMedida, fkMaquina, fkComponente) VALUES ('Tamanho', {memoriaTotal}, 'GB', {idMaquina}, 2)")
     inserirBanco(f"INSERT INTO Atributo (atributo, valor, unidadeMedida, fkMaquina, fkComponente) VALUES ('Tamanho', {discoTotal}, 'GB', {idMaquina}, 3)")
+
+consulta = consultarBanco(f"SELECT nomeMaquina FROM Maquina WHERE nomeMaquina = '{nome}' AND fkFuncionario = {idFuncionario}")
+idMaquina = consulta[0][0]
 
 # Inserindo entrada com localização
 ip = geocoder.ip('me')
