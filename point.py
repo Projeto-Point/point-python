@@ -87,11 +87,13 @@ while verificaLogin == False:
         verificaLogin = True
 
 nome = platform.node()
+idMaquina = 0
 
 # Verificando se a máquina existe
 consulta = consultarBanco(f"SELECT nomeMaquina FROM Maquina WHERE nomeMaquina = '{nome}' AND fkFuncionario = {idFuncionario}")
 
 if len(consulta) == 1:
+    idMaquina = consulta[0][0]
     print("Esta máquina já está cadastrada")
 else:
     print("Cadastrando máquina...")
@@ -101,7 +103,7 @@ else:
     
     inserirBanco(f"INSERT INTO Maquina (sistemaOperacional, nomeMaquina, tipo, fkFuncionario) VALUES ('{platform.system()}', '{platform.node()}', 'Servidor', {idFuncionario})")
 
-    consulta = consultarBanco(f"SELECT idMaquina FROM Maquina WHERE nomeMaquina = '{nome}' AND fkFuncionario = {idFuncionario}")
+    consulta = consultarBanco(f"SELECT nomeMaquina FROM Maquina WHERE nomeMaquina = '{nome}' AND fkFuncionario = {idFuncionario}")
     idMaquina = consulta[0][0]
 
     # Inserindo componentes
@@ -116,9 +118,6 @@ else:
     inserirBanco(f"INSERT INTO Atributo (atributo, valor, unidadeMedida, fkMaquina, fkComponente) VALUES ('Tamanho', {discoTotal}, 'GB', {idMaquina}, 3)")
 
 # Inserindo entrada com localização
-consulta = consultarBanco((f"SELECT idMaquina FROM Maquina WHERE nomeMaquina = '{nome}'"))
-idMaquina = consulta[0][0]
-
 ip = geocoder.ip('me')
 inserirBanco(f"INSERT INTO Localizacao (acao, dataEhora, ipAdress, longitude, latitude, cidade, pais, fkMaquina) VALUES ('E', GETDATE(), '{ip.ip}', {ip.latlng[0]}, {ip.latlng[1]}, '{ip.city}', '{ip.country}', {idMaquina})")
 
