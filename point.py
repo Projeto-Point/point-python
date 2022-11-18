@@ -61,7 +61,7 @@ def consultarBanco(comando):
     except:
         # MySQL Local
         comando = comando.replace('GETDATE', 'NOW')
-        conexaoMySql = pymysql.connect(db=databaseMySql, user=usernameMySql, passwd=passwordSqlServer)
+        conexaoMySql = pymysql.connect(db=databaseMySql, user=usernameMySql, passwd=passwordMySql)
 
         with conexaoMySql:
             with conexaoMySql.cursor() as cursor:
