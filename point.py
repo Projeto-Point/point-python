@@ -1,13 +1,16 @@
-## Esse código é da Camarada Agdas. Temos que refatorar o código python 
-import datetime
 import os
 import platform
 from time import sleep
-from dashing import (HSplit, VSplit, VGauge, HGauge, Text)
-from psutil import (virtual_memory, cpu_percent, disk_usage, users, pids, process_iter, cpu_count)
+from dashing import (HSplit, VSplit, HGauge, Text)
+from psutil import (virtual_memory, cpu_percent, disk_usage, users, pids, cpu_count)
 import pymssql
 import geocoder
 import pymysql
+import requests
+import psutil
+import json
+import email
+from datetime import datetime, timedelta
 
 # Credenciais da Azure
 serverSqlServer = 'bd-point.database.windows.net'
@@ -17,8 +20,8 @@ passwordSqlServer = '1cco#grupo1'
 
 # Credenciais do MySQL
 databaseMySql = 'bd_point'
-usernameMySql = 'root'
-passwordMySql = 'urubu100'
+usernameMySql = 'aluno'
+passwordMySql = 'sptech'
 
 def limpar():
     if os.name == 'posix':
@@ -36,40 +39,67 @@ def inserirBanco(comando):
         
         conexaoSqlServer.commit()
 
-    # MySQL Local
-    comando = comando.replace('GETDATE', 'NOW')
-    conexaoMySql = pymysql.connect(db=databaseMySql, user=usernameMySql, passwd=passwordMySql)
-
-    with conexaoMySql:
-        with conexaoMySql.cursor() as cursor:
-            cursor.execute(comando)
-        
-        conexaoMySql.commit()
 
 def consultarBanco(comando):
-    comando = comando.replace('GETDATE', 'NOW')
-    
-    try:
         # Azure SQL Server
-        conexaoSqlServer = pymssql.connect(server=serverSqlServer, user=usernameSqlServer, password=passwordSqlServer, database=databaseSqlServer)
-    
-        with conexaoSqlServer:
-            with conexaoSqlServer.cursor() as cursor:
-                cursor.execute(comando)
-                return cursor.fetchall()
+    conexaoSqlServer = pymssql.connect(server=serverSqlServer, user=usernameSqlServer, password=passwordSqlServer, database=databaseSqlServer)
 
-    except:
-        # MySQL Local
-        comando = comando.replace('GETDATE', 'NOW')
-        conexaoMySql = pymysql.connect(db=databaseMySql, user=usernameMySql, passwd=passwordMySql)
+    with conexaoSqlServer:
+        with conexaoSqlServer.cursor() as cursor:
+            cursor.execute(comando)
+            return cursor.fetchall()
 
-        with conexaoMySql:
-            with conexaoMySql.cursor() as cursor:
-                cursor.execute(comando)
-                return cursor.fetchall()
+def has_alerta_por_componente(componente):
+    x = consultarBanco(f"SELECT TOP 1 resolucao,idAlerta FROM Alerta WHERE fkMaquina = {idMaquina} and componente like '{componente}' ORDER BY dataEhora DESC;")
+    if len(x) > 0:
+        return [x[0][0], x[0][1]]
+    else:
+        return [0,0]
+
+def inserir_alerta(componente, valor):
+    inserirBanco(f"INSERT INTO Alerta (dataEhora, titulo, resolucao, componente, valor, fkMaquina)VALUES (GETDATE() AT TIME ZONE 'UTC' AT TIME ZONE 'Bahia Standard Time', '{componente} está com {valor}', 'ABERTO', '{componente}', {valor}, {idMaquina})")
+
+def fechar_alerta(idAlerta):
+    inserirBanco(f"UPDATE [dbo].[Alerta] SET resolucao = 'FECHADO' WHERE idAlerta = {idAlerta};")
+
+
+def reportarAlerta(mensagem, email, nome):
+
+    url = "https://api.pipefy.com/graphql"
+
+
+    now = datetime.now()
+
+    now = str(now)
+
+    dt = datetime.strptime(now, '%Y-%m-%d %H:%M:%S.%f')
+
+    somar_3_horas = dt + timedelta(hours=3)
+
+    dt_string = somar_3_horas.strftime("%d/%m/%Y %H:%M")
+
+    #teste card do pipefy com o formulário preenchido a mão. Em seguida eu vou conectar isso com o BD para pegar as infos direto da máquina do funcionário
+
+    payload = {"query": "mutation {createCard(input: {pipe_id: 302776879,title: \"New card\",fields_attributes:[{field_id: \"qual_o_assunto_do_seu_pedido\", field_value: \"%s\"},{field_id: \"email\", field_value: \"%s\"},{field_id: \"nome_do_funcion_rio\", field_value: \"%s\"}, {field_id: \"data_e_hora\", field_value: \"%s\"}]}) {card {title}}}" % (mensagem, email, nome, dt_string)}
+
+    headers = {
+        "accept": "application/json",
+        "content-type": "application/json",
+        "authorization": "Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzUxMiJ9.eyJ1c2VyIjp7ImlkIjozMDIwODAyNDcsImVtYWlsIjoiYWxlc3NhbmRyYS5iYWNjaW5Ac3B0ZWNoLnNjaG9vbCIsImFwcGxpY2F0aW9uIjozMDAyMTEzMjR9fQ.TmKWl_6YGv1rP6NsBmLGSSSnmJ6_EStYHMDHN5Rmc7C1BSnsvdTlZSGq9YPpuehXdJ9qiaAfAARrt-G_11dn4g"
+    }
+
+    response = requests.post(url, json=payload, headers=headers)
+
+    print(response.text)
+
 
 def bytes_para_giga(value):
     return f'{value / 1024 / 1024 / 1024: .2f}'
+
+def has_hora_passada(hora_atual, hora_ultima_notificacao):
+    # 3 é a quantidade de hors que precisa passar para mandar a notificacao    
+   return hora_atual >= hora_ultima_notificacao + 1
+    
 
 verificaLogin = False
 verificarCadastro = False
@@ -81,12 +111,14 @@ while verificaLogin == False:
     login = input('Bem vindo ao Point! \nDigite o login do funcionário: ')
     senha = input('Digite a senha do funcionário: ')
     
-    consulta = consultarBanco(f"SELECT idFuncionario FROM Funcionario WHERE email = '{login}' and senha = '{senha}'")
+    consulta = consultarBanco(f"SELECT idFuncionario, nome FROM Funcionario WHERE email = '{login}' and senha = '{senha}'")
     if(len(consulta) > 0):
         idFuncionario = consulta[0][0]
+        nomeFuncionario = consulta[0][1]
         verificaLogin = True
 
 nome = platform.node()
+
 
 # Verificando se a máquina existe
 consulta = consultarBanco(f"SELECT nomeMaquina FROM Maquina WHERE nomeMaquina = '{nome}' AND fkFuncionario = {idFuncionario}")
@@ -120,7 +152,7 @@ idMaquina = consulta[0][0]
 
 # Inserindo entrada com localização
 ip = geocoder.ip('me')
-inserirBanco(f"INSERT INTO Localizacao (acao, dataEhora, ipAdress, longitude, latitude, cidade, pais, fkMaquina) VALUES ('E', GETDATE(), '{ip.ip}', {ip.latlng[0]}, {ip.latlng[1]}, '{ip.city}', '{ip.country}', {idMaquina})")
+inserirBanco(f"INSERT INTO Localizacao (acao, dataEhora, ipAdress, longitude, latitude, cidade, pais, fkMaquina) VALUES ('E', GETDATE() AT TIME ZONE 'UTC' AT TIME ZONE 'Bahia Standard Time', '{ip.ip}', {ip.latlng[0]}, {ip.latlng[1]}, '{ip.city}', '{ip.country}', {idMaquina})")
 
 # Personalizando o terminal 
 ui = HSplit(
@@ -154,6 +186,7 @@ ui = HSplit(
         ),
     ),
 )
+
 
 while True:
 #     #Memória RAM
@@ -194,17 +227,59 @@ while True:
     disk_tui.title = f'Disco {disk_tui.value}%'
 
     # Tempo real
-    agora = datetime.datetime.now()
+    agora = datetime.now()
     agora_string = agora.strftime("%A %d %B %y %I:%M")
 
-    agora_datetime = datetime.datetime.strptime(agora_string, "%A %d %B %y %I:%M")
+    agora_datetime = datetime.strptime(agora_string, "%A %d %B %y %I:%M")
 
-    # Banco de dados
-    inserirBanco(f"INSERT INTO Registro (valor, unidadeMedida, dataEhora, fkComponente, fkMaquina) VALUES ({cpu_percent(interval=0.1)}, '%', GETDATE(), 1, {idMaquina})")
+    porc_cpu = cpu_percent(interval=0.1)
+    porc_ram = virtual_memory().percent
+    porc_disco = disk_usage('/').percent   
+    
 
-    inserirBanco(f"INSERT INTO Registro (valor, unidadeMedida, dataEhora, fkComponente, fkMaquina) VALUES ({virtual_memory().percent}, '%', GETDATE(), 2, {idMaquina})")
+    # Esta fora de metrica??? > 80
+    #True)Verifica se foi criado 
+    #> True) Se for criado e esta aberto -- Faz nada
+    #> False) Cria o alerta
+    #False) verifica se fo 
+    # 
 
-    inserirBanco(f"INSERT INTO Registro (valor, unidadeMedida, dataEhora, fkComponente, fkMaquina) VALUES ({disk_usage('/').percent}, '%', GETDATE(), 3, {idMaquina})")
+    if porc_cpu >= 80:
+        if has_alerta_por_componente('CPU')[0] != 'ABERTO':
+            inserir_alerta('CPU',porc_cpu)
+            reportarAlerta(f"CPU está com {porc_cpu}%!", login, nomeFuncionario)
+    else:
+        if has_alerta_por_componente('CPU')[0] != 'FECHADO':
+            fechar_alerta(has_alerta_por_componente('CPU')[1])
+        
+    if porc_ram >= 85:
+        
+        if has_alerta_por_componente('RAM')[0] != 'ABERTO':
+            inserir_alerta('RAM', porc_ram)
+            reportarAlerta(f"Ram está com {porc_ram}%!", login, nomeFuncionario)
+    else:
+        if has_alerta_por_componente('RAM')[0] != 'FECHADO':
+            fechar_alerta(has_alerta_por_componente('RAM')[1])
+             
+    if porc_disco >= 90:
+        
+        if has_alerta_por_componente('DISCO')[0] != 'ABERTO':
+            inserir_alerta('DISCO', porc_disco)
+            reportarAlerta(f"Disco está com {porc_disco}%!", login, nomeFuncionario)
+    else:
+        if has_alerta_por_componente('DISCO')[0] != 'FECHADO':
+            fechar_alerta(has_alerta_por_componente('DISCO')[1])
+        
+            
+            
+
+    inserirBanco(f"INSERT INTO Registro (valor, unidadeMedida, dataEhora, fkComponente, fkMaquina) VALUES ({porc_cpu}, '%', GETDATE() AT TIME ZONE 'UTC' AT TIME ZONE 'Bahia Standard Time', 1, {idMaquina})")
+
+    inserirBanco(f"INSERT INTO Registro (valor, unidadeMedida, dataEhora, fkComponente, fkMaquina) VALUES ({porc_ram}, '%', GETDATE() AT TIME ZONE 'UTC' AT TIME ZONE 'Bahia Standard Time', 2, {idMaquina})")
+
+    inserirBanco(f"INSERT INTO Registro (valor, unidadeMedida, dataEhora, fkComponente, fkMaquina) VALUES ({porc_disco}, '%', GETDATE() AT TIME ZONE 'UTC' AT TIME ZONE 'Bahia Standard Time', 3, {idMaquina})")
+
+    inserirBanco(f"INSERT INTO RegistroAgda (qtdProcessos, dataEhora, fkMaquina) VALUES ({len(pids())}, GETDATE() AT TIME ZONE 'UTC' AT TIME ZONE 'Bahia Standard Time', {idMaquina})")
 
     #Mostrar os dados de 3 em 3 segundos
     try:
@@ -212,6 +287,5 @@ while True:
         sleep(3)
     except KeyboardInterrupt:
         # Inserindo saída com localização
-        inserirBanco(f"INSERT INTO Localizacao (acao, dataEhora, ipAdress, longitude, latitude, cidade, pais, fkMaquina) VALUES ('S', GETDATE(), '{ip.ip}', {ip.latlng[0]}, {ip.latlng[1]}, '{ip.city}', '{ip.country}', {idMaquina})")
-
+        inserirBanco(f"INSERT INTO Localizacao (acao, dataEhora, ipAdress, longitude, latitude, cidade, pais, fkMaquina) VALUES ('S', GETDATE() AT TIME ZONE 'UTC' AT TIME ZONE 'Bahia Standard Time', '{ip.ip}', {ip.latlng[0]}, {ip.latlng[1]}, '{ip.city}', '{ip.country}', {idMaquina})")
         break
